@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Extractor • Extract Text & Images</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Outfit', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        ink: '#0a0a0a',
+                        paper: '#fafaf9',
+                        accent: '#ff4d4d',
+                        muted: '#78716c',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #fafaf9 0%, #f5f5f4 50%, #e7e5e4 100%);
+            min-height: 100vh;
+        }
+        
+        .grain-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            opacity: 0.03;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+        }
+        
+        .upload-zone {
+            background: linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.4) 100%);
+            backdrop-filter: blur(20px);
+            border: 2px dashed #d6d3d1;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: #ff4d4d;
+            box-shadow: 0 0 40px rgba(255, 77, 77, 0.15);
+            transform: translateY(-2px);
+        }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+        }
+        
+        .text-preview {
+            font-family: 'JetBrains Mono', monospace;
+            background: #1a1a1a;
+            color: #e5e5e5;
+            line-height: 1.7;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #ff4d4d 0%, #ff3333 100%);
+            box-shadow: 0 4px 20px rgba(255, 77, 77, 0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(255, 77, 77, 0.4);
+        }
+        
+        .image-grid img {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .image-grid img:hover {
+            transform: scale(1.05);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+        }
+        
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .animate-slide-up {
+            animation: slideUp 0.5s ease-out forwards;
+        }
+        
+        .upload-item {
+            animation: slideUp 0.5s ease-out forwards;
+        }
+        
+        .spinner {
+            border: 3px solid rgba(255, 77, 77, 0.2);
+            border-top-color: #ff4d4d;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 0.8s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .modal-backdrop {
+            background: rgba(10, 10, 10, 0.8);
+            backdrop-filter: blur(8px);
+        }
+        
+        .tab-active {
+            border-bottom: 3px solid #ff4d4d;
+            color: #0a0a0a;
+        }
+    </style>
+</head>
+<body class="font-sans text-ink antialiased">
+    <div class="grain-overlay"></div>
+    
+    <!-- Header -->
+    <header class="relative z-10 py-8 px-6">
+        <div class="max-w-6xl mx-auto">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 bg-accent rounded-lg flex items-center justify-center">
+                        <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-semibold tracking-tight">PDF Extractor</h1>
+                        <p class="text-xs text-muted font-mono">POWERED BY PDFBOX</p>
+                    </div>
+                </div>
+                <a href="#uploads" class="text-sm font-medium text-muted hover:text-ink transition-colors">
+                    View All Uploads →
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="relative z-10 px-6 pb-20">
+        <div class="max-w-6xl mx-auto">
+            
+            <!-- Upload Section -->
+            <section class="mb-16">
+                <div class="text-center mb-10">
+                    <h2 class="text-4xl font-bold tracking-tight mb-3">Extract Text & Images</h2>
+                    <p class="text-muted text-lg">Drop your PDF and let us do the heavy lifting</p>
+                </div>
+                
+                <form id="uploadForm" class="max-w-2xl mx-auto">
+                    <div id="dropZone" class="upload-zone rounded-2xl p-12 text-center cursor-pointer">
+                        <input type="file" id="fileInput" name="file" accept=".pdf,application/pdf" class="hidden">
+                        
+                        <div id="uploadIdle">
+                            <div class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-stone-100 flex items-center justify-center">
+                                <svg class="w-10 h-10 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                                </svg>
+                            </div>
+                            <p class="text-lg font-medium mb-2">Drop your PDF here</p>
+                            <p class="text-sm text-muted mb-4">or click to browse</p>
+                            <p class="text-xs text-stone-400 font-mono">MAX 50MB • PDF ONLY</p>
+                        </div>
+                        
+                        <div id="uploadProgress" class="hidden">
+                            <div class="spinner mx-auto mb-4"></div>
+                            <p class="text-lg font-medium">Processing your PDF...</p>
+                            <p class="text-sm text-muted">Extracting text and images</p>
+                        </div>
+                        
+                        <div id="uploadSuccess" class="hidden">
+                            <div class="w-20 h-20 mx-auto mb-6 rounded-2xl bg-green-100 flex items-center justify-center">
+                                <svg class="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                                </svg>
+                            </div>
+                            <p class="text-lg font-medium text-green-700">Upload Complete!</p>
+                            <p class="text-sm text-muted mt-1" id="successMessage"></p>
+                        </div>
+                    </div>
+                </form>
+            </section>
+
+            <!-- Uploads List Section -->
+            <section id="uploads" class="scroll-mt-8">
+                <div class="flex items-center justify-between mb-8">
+                    <h3 class="text-2xl font-semibold tracking-tight">Your Uploads</h3>
+                    <button onclick="loadUploads()" class="text-sm font-medium text-muted hover:text-ink transition-colors flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        Refresh
+                    </button>
+                </div>
+                
+                <div id="uploadsContainer">
+                    <div id="uploadsEmpty" class="card rounded-2xl p-12 text-center">
+                        <div class="w-16 h-16 mx-auto mb-4 rounded-xl bg-stone-100 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+                            </svg>
+                        </div>
+                        <p class="text-muted">No uploads yet. Upload a PDF to get started.</p>
+                    </div>
+                    
+                    <div id="uploadsList" class="grid gap-4 hidden"></div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Text Modal -->
+    <div id="textModal" class="fixed inset-0 z-50 hidden">
+        <div class="modal-backdrop absolute inset-0" onclick="closeTextModal()"></div>
+        <div class="relative z-10 flex items-center justify-center min-h-screen p-6">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden animate-slide-up">
+                <div class="flex items-center justify-between p-6 border-b border-stone-200">
+                    <h4 class="text-lg font-semibold">Extracted Text</h4>
+                    <button onclick="closeTextModal()" class="p-2 hover:bg-stone-100 rounded-lg transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="p-6 overflow-auto max-h-[calc(85vh-120px)]">
+                    <pre id="textContent" class="text-preview p-6 rounded-xl text-sm whitespace-pre-wrap overflow-x-auto"></pre>
+                </div>
+                <div class="p-4 border-t border-stone-200 flex justify-end gap-3">
+                    <button onclick="copyText()" class="px-4 py-2 text-sm font-medium text-ink hover:bg-stone-100 rounded-lg transition-colors">
+                        Copy Text
+                    </button>
+                    <button onclick="downloadText()" class="btn-primary px-4 py-2 text-sm font-medium text-white rounded-lg">
+                        Download .txt
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Images Modal -->
+    <div id="imagesModal" class="fixed inset-0 z-50 hidden">
+        <div class="modal-backdrop absolute inset-0" onclick="closeImagesModal()"></div>
+        <div class="relative z-10 flex items-center justify-center min-h-screen p-6">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[85vh] overflow-hidden animate-slide-up">
+                <div class="flex items-center justify-between p-6 border-b border-stone-200">
+                    <h4 class="text-lg font-semibold">Extracted Images</h4>
+                    <button onclick="closeImagesModal()" class="p-2 hover:bg-stone-100 rounded-lg transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div id="imagesContent" class="p-6 overflow-auto max-h-[calc(85vh-80px)]">
+                    <!-- Images will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = '/api';
+        let currentUploadId = null;
+        let currentText = '';
+
+        // DOM Elements
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadIdle = document.getElementById('uploadIdle');
+        const uploadProgress = document.getElementById('uploadProgress');
+        const uploadSuccess = document.getElementById('uploadSuccess');
+        const successMessage = document.getElementById('successMessage');
+        const uploadsEmpty = document.getElementById('uploadsEmpty');
+        const uploadsList = document.getElementById('uploadsList');
+
+        // File Upload Handlers
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0 && files[0].type === 'application/pdf') {
+                fileInput.files = files;
+                uploadFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadFile(e.target.files[0]);
+            }
+        });
+
+        async function uploadFile(file) {
+            showProgress();
+            
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch(`${API_URL}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showSuccess(result);
+                    loadUploads();
+                    
+                    // Reset after 3 seconds
+                    setTimeout(resetUploadZone, 3000);
+                } else {
+                    alert('Error: ' + result.error);
+                    resetUploadZone();
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                alert('Failed to upload file. Please try again.');
+                resetUploadZone();
+            }
+        }
+
+        function showProgress() {
+            uploadIdle.classList.add('hidden');
+            uploadSuccess.classList.add('hidden');
+            uploadProgress.classList.remove('hidden');
+        }
+
+        function showSuccess(result) {
+            uploadProgress.classList.add('hidden');
+            uploadSuccess.classList.remove('hidden');
+            successMessage.textContent = `Extracted ${result.extractedText.length} characters and ${result.imageCount} images`;
+        }
+
+        function resetUploadZone() {
+            uploadProgress.classList.add('hidden');
+            uploadSuccess.classList.add('hidden');
+            uploadIdle.classList.remove('hidden');
+            fileInput.value = '';
+        }
+
+        // Load Uploads List
+        async function loadUploads() {
+            try {
+                const response = await fetch(`${API_URL}/uploads`);
+                const uploads = await response.json();
+
+                if (uploads.length === 0) {
+                    uploadsEmpty.classList.remove('hidden');
+                    uploadsList.classList.add('hidden');
+                    return;
+                }
+
+                uploadsEmpty.classList.add('hidden');
+                uploadsList.classList.remove('hidden');
+
+                uploadsList.innerHTML = uploads.map((upload, index) => `
+                    <div class="upload-item card rounded-xl p-5" style="animation-delay: ${index * 0.1}s">
+                        <div class="flex items-start justify-between">
+                            <div class="flex items-center gap-4">
+                                <div class="w-12 h-12 rounded-lg bg-accent/10 flex items-center justify-center flex-shrink-0">
+                                    <svg class="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <p class="font-mono text-xs text-muted mb-1">${upload.id.substring(0, 8)}...</p>
+                                    <div class="flex items-center gap-3 text-sm">
+                                        <span class="flex items-center gap-1.5 text-muted">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                            </svg>
+                                            Text extracted
+                                        </span>
+                                        <span class="flex items-center gap-1.5 text-muted">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                            </svg>
+                                            ${upload.imageCount} images
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button onclick="viewText('${upload.id}')" class="p-2 hover:bg-stone-100 rounded-lg transition-colors" title="View Text">
+                                    <svg class="w-5 h-5 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                    </svg>
+                                </button>
+                                <button onclick="viewImages('${upload.id}', ${JSON.stringify(upload.images).replace(/"/g, '&quot;')})" class="p-2 hover:bg-stone-100 rounded-lg transition-colors ${upload.imageCount === 0 ? 'opacity-30 cursor-not-allowed' : ''}" title="View Images" ${upload.imageCount === 0 ? 'disabled' : ''}>
+                                    <svg class="w-5 h-5 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                                    </svg>
+                                </button>
+                                <a href="${API_URL}/uploads/${upload.id}/pdf" target="_blank" class="p-2 hover:bg-stone-100 rounded-lg transition-colors" title="View PDF">
+                                    <svg class="w-5 h-5 text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                                    </svg>
+                                </a>
+                                <button onclick="deleteUpload('${upload.id}')" class="p-2 hover:bg-red-50 rounded-lg transition-colors" title="Delete">
+                                    <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+
+            } catch (error) {
+                console.error('Error loading uploads:', error);
+            }
+        }
+
+        // View Text Modal
+        async function viewText(id) {
+            currentUploadId = id;
+            
+            try {
+                const response = await fetch(`${API_URL}/uploads/${id}/text`);
+                const result = await response.json();
+
+                if (result.success) {
+                    currentText = result.text;
+                    document.getElementById('textContent').textContent = result.text || '(No text extracted)';
+                    document.getElementById('textModal').classList.remove('hidden');
+                    document.body.style.overflow = 'hidden';
+                } else {
+                    alert('Error loading text: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error loading text:', error);
+                alert('Failed to load text');
+            }
+        }
+
+        function closeTextModal() {
+            document.getElementById('textModal').classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+
+        function copyText() {
+            navigator.clipboard.writeText(currentText).then(() => {
+                alert('Text copied to clipboard!');
+            });
+        }
+
+        function downloadText() {
+            const blob = new Blob([currentText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `extracted_text_${currentUploadId.substring(0, 8)}.txt`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // View Images Modal
+        function viewImages(id, images) {
+            if (!images || images.length === 0) return;
+            
+            const imagesContent = document.getElementById('imagesContent');
+            
+            if (images.length === 0) {
+                imagesContent.innerHTML = `
+                    <div class="text-center py-12 text-muted">
+                        <p>No images found in this PDF</p>
+                    </div>
+                `;
+            } else {
+                imagesContent.innerHTML = `
+                    <div class="image-grid grid grid-cols-2 md:grid-cols-3 gap-4">
+                        ${images.map(img => `
+                            <a href="${API_URL}/uploads/${id}/images/${img}" target="_blank" class="block">
+                                <img src="${API_URL}/uploads/${id}/images/${img}" 
+                                     alt="${img}" 
+                                     class="w-full h-48 object-cover rounded-xl border border-stone-200 cursor-pointer">
+                                <p class="text-xs text-muted mt-2 font-mono truncate">${img}</p>
+                            </a>
+                        `).join('')}
+                    </div>
+                `;
+            }
+            
+            document.getElementById('imagesModal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeImagesModal() {
+            document.getElementById('imagesModal').classList.add('hidden');
+            document.body.style.overflow = '';
+        }
+
+        // Delete Upload
+        async function deleteUpload(id) {
+            if (!confirm('Are you sure you want to delete this upload?')) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/uploads/${id}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    loadUploads();
+                } else {
+                    alert('Error: ' + result.error);
+                }
+            } catch (error) {
+                console.error('Error deleting upload:', error);
+                alert('Failed to delete upload');
+            }
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeTextModal();
+                closeImagesModal();
+            }
+        });
+
+        // Load uploads on page load
+        loadUploads();
+    </script>
+</body>
+</html>
