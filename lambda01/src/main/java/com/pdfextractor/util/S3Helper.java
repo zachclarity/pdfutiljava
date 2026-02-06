@@ -1,20 +1,30 @@
 package com.pdfextractor.util;
 
+import java.net.URI;
+import java.util.List;
+import java.util.stream.Collectors;
+
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.*;
-
-import java.net.URI;
-import java.util.List;
-import java.util.stream.Collectors;
+import software.amazon.awssdk.services.s3.model.CommonPrefix;
+import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.GetObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.S3Exception;
+import software.amazon.awssdk.services.s3.model.S3Object;
 
 /**
- * S3 helper configured for LocalStack.
- * Reads endpoint and bucket name from environment variables.
+ * S3 helper configured for LocalStack. Reads endpoint and bucket name from
+ * environment variables.
  */
 public class S3Helper {
 
@@ -34,7 +44,7 @@ public class S3Helper {
                 .region(Region.of(region))
                 .credentialsProvider(StaticCredentialsProvider.create(
                         AwsBasicCredentials.create("test", "test")))
-                .forcePathStyle(true)   // Required for LocalStack
+                .forcePathStyle(true) // Required for LocalStack
                 .build();
     }
 
@@ -47,7 +57,6 @@ public class S3Helper {
     }
 
     // ---- convenience wrappers ----
-
     public static void putObject(String key, byte[] data, String contentType) {
         s3.putObject(
                 PutObjectRequest.builder()
@@ -78,7 +87,8 @@ public class S3Helper {
                     .key(key)
                     .build());
             return true;
-        } catch (NoSuchKeyException | S3Exception e) {
+        } catch (S3Exception e) {
+            // Removed NoSuchKeyException from the multi-catch because it is a subclass of S3Exception
             return false;
         }
     }
