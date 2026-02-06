@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,dynamodb,apigateway,lambda,iam,sts,logs
+      - DEBUG=1
+      - LAMBDA_EXECUTOR=docker-reuse
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "./.localstack:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+  lambda:
+    build: ./lambda
+    image: local/docstore-lambda-ocr:latest
+
+  init:
+    image: amazon/aws-cli
+    depends_on:
+      - localstack
+      - lambda
+    volumes:
+      - ./init:/init
+    entrypoint: ["/bin/bash","/init/init.sh"]
+
+  web:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./web:/usr/share/nginx/html:ro
+    depends_on:
+      - init

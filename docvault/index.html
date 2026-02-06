@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocVault — PDF Document Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,500;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"DM Sans"', 'system-ui', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'],
+                    },
+                    colors: {
+                        vault: {
+                            50: '#f0f4ff',
+                            100: '#dbe4ff',
+                            200: '#bac8ff',
+                            300: '#91a7ff',
+                            400: '#748ffc',
+                            500: '#5c7cfa',
+                            600: '#4c6ef5',
+                            700: '#4263eb',
+                            800: '#3b5bdb',
+                            900: '#364fc7',
+                            950: '#1e2a5e',
+                        },
+                        ink: {
+                            50: '#f8f9fa',
+                            100: '#f1f3f5',
+                            200: '#e9ecef',
+                            300: '#dee2e6',
+                            400: '#ced4da',
+                            500: '#adb5bd',
+                            600: '#868e96',
+                            700: '#495057',
+                            800: '#343a40',
+                            900: '#212529',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'DM Sans', sans-serif; background: #f8f9fa; }
+
+        /* Upload drop zone */
+        .drop-zone { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .drop-zone.dragover {
+            border-color: #4c6ef5;
+            background: #dbe4ff;
+            transform: scale(1.01);
+        }
+
+        /* Fade-in animation */
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-up { animation: fadeUp 0.4s ease-out forwards; }
+
+        /* Progress bar */
+        .progress-fill {
+            transition: width 0.3s ease;
+            background: linear-gradient(90deg, #4c6ef5, #748ffc);
+        }
+
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #ced4da; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #adb5bd; }
+
+        /* Modal backdrop */
+        .modal-backdrop {
+            background: rgba(33, 37, 41, 0.6);
+            backdrop-filter: blur(4px);
+        }
+
+        /* Tab active state */
+        .tab-active { border-bottom: 2px solid #4c6ef5; color: #4c6ef5; font-weight: 600; }
+
+        /* Toast notification */
+        @keyframes slideIn { from { transform: translateX(120%); } to { transform: translateX(0); } }
+        @keyframes slideOut { from { transform: translateX(0); } to { transform: translateX(120%); } }
+        .toast-in { animation: slideIn 0.3s ease-out; }
+        .toast-out { animation: slideOut 0.3s ease-in forwards; }
+
+        /* Image gallery thumbnail */
+        .img-thumb {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .img-thumb:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body class="min-h-screen text-ink-800">
+
+    <!-- ===== HEADER ===== -->
+    <header class="bg-white border-b border-ink-200 sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-vault-600 flex items-center justify-center shadow-lg shadow-vault-600/25">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold text-ink-900 tracking-tight">DocVault</h1>
+                    <p class="text-xs text-ink-500 -mt-0.5">PDF Document Manager</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <div class="relative">
+                    <input type="text" id="searchInput" placeholder="Search documents..."
+                        class="w-72 pl-10 pr-4 py-2.5 bg-ink-50 border border-ink-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-vault-500/30 focus:border-vault-400 transition-all"
+                        onkeyup="handleSearch(event)">
+                    <svg class="w-4 h-4 text-ink-400 absolute left-3.5 top-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+                    </svg>
+                </div>
+                <button onclick="showUploadPanel()" class="px-5 py-2.5 bg-vault-600 text-white text-sm font-medium rounded-xl hover:bg-vault-700 transition-colors shadow-md shadow-vault-600/20 flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" d="M12 4v16m8-8H4"/>
+                    </svg>
+                    Upload PDF
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <main class="max-w-7xl mx-auto px-6 py-8">
+
+        <!-- Upload Panel (hidden by default) -->
+        <div id="uploadPanel" class="hidden mb-8 animate-fade-up">
+            <div class="bg-white rounded-2xl border border-ink-200 shadow-sm overflow-hidden">
+                <div class="px-6 py-4 border-b border-ink-100 flex items-center justify-between">
+                    <h2 class="font-bold text-ink-900">Upload PDF Document</h2>
+                    <button onclick="hideUploadPanel()" class="text-ink-400 hover:text-ink-600 transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <div id="dropZone" class="drop-zone border-2 border-dashed border-ink-300 rounded-xl p-12 text-center cursor-pointer hover:border-vault-400 hover:bg-vault-50/50"
+                         onclick="document.getElementById('fileInput').click()"
+                         ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+                        <svg class="w-12 h-12 mx-auto text-ink-300 mb-4" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+                        </svg>
+                        <p class="text-ink-600 font-medium mb-1">Drop your PDF here or click to browse</p>
+                        <p class="text-ink-400 text-sm">PDF files only — Max 25MB</p>
+                        <input type="file" id="fileInput" accept=".pdf,application/pdf" class="hidden" onchange="handleFileSelect(event)">
+                    </div>
+
+                    <!-- File preview after selection -->
+                    <div id="filePreview" class="hidden mt-4 p-4 bg-ink-50 rounded-xl flex items-center gap-4">
+                        <div class="w-12 h-12 bg-red-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <span class="text-red-500 text-xs font-mono font-bold">PDF</span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p id="previewName" class="text-sm font-medium text-ink-800 truncate"></p>
+                            <p id="previewSize" class="text-xs text-ink-500"></p>
+                        </div>
+                        <button onclick="clearFile()" class="text-ink-400 hover:text-red-500 transition-colors">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- Progress bar -->
+                    <div id="progressBar" class="hidden mt-4">
+                        <div class="flex items-center justify-between mb-1">
+                            <span id="progressLabel" class="text-sm text-ink-600">Uploading...</span>
+                            <span id="progressPct" class="text-sm font-mono text-vault-600">0%</span>
+                        </div>
+                        <div class="h-2 bg-ink-100 rounded-full overflow-hidden">
+                            <div id="progressFill" class="progress-fill h-full rounded-full" style="width:0%"></div>
+                        </div>
+                    </div>
+
+                    <div class="mt-4 flex justify-end">
+                        <button id="uploadBtn" onclick="uploadFile()" disabled
+                            class="px-6 py-2.5 bg-vault-600 text-white text-sm font-medium rounded-xl hover:bg-vault-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-md shadow-vault-600/20">
+                            Upload &amp; Process
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Bar -->
+        <div id="statsBar" class="grid grid-cols-4 gap-4 mb-8">
+            <div class="bg-white rounded-xl border border-ink-200 px-5 py-4">
+                <p class="text-xs text-ink-500 uppercase tracking-wider font-medium">Documents</p>
+                <p id="statTotal" class="text-2xl font-bold text-ink-900 mt-1">—</p>
+            </div>
+            <div class="bg-white rounded-xl border border-ink-200 px-5 py-4">
+                <p class="text-xs text-ink-500 uppercase tracking-wider font-medium">Total Pages</p>
+                <p id="statPages" class="text-2xl font-bold text-ink-900 mt-1">—</p>
+            </div>
+            <div class="bg-white rounded-xl border border-ink-200 px-5 py-4">
+                <p class="text-xs text-ink-500 uppercase tracking-wider font-medium">Images Extracted</p>
+                <p id="statImages" class="text-2xl font-bold text-ink-900 mt-1">—</p>
+            </div>
+            <div class="bg-white rounded-xl border border-ink-200 px-5 py-4">
+                <p class="text-xs text-ink-500 uppercase tracking-wider font-medium">Storage Used</p>
+                <p id="statSize" class="text-2xl font-bold text-ink-900 mt-1">—</p>
+            </div>
+        </div>
+
+        <!-- Documents Table -->
+        <div class="bg-white rounded-2xl border border-ink-200 shadow-sm overflow-hidden">
+            <div class="px-6 py-4 border-b border-ink-100 flex items-center justify-between">
+                <h2 class="font-bold text-ink-900">All Documents</h2>
+                <button onclick="loadDocuments()" class="text-sm text-vault-600 hover:text-vault-700 font-medium flex items-center gap-1 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/>
+                    </svg>
+                    Refresh
+                </button>
+            </div>
+
+            <div id="documentsLoading" class="hidden px-6 py-12 text-center">
+                <div class="inline-flex items-center gap-3 text-ink-500">
+                    <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                    </svg>
+                    Loading documents...
+                </div>
+            </div>
+
+            <div id="documentsEmpty" class="hidden px-6 py-16 text-center">
+                <svg class="w-16 h-16 mx-auto text-ink-200 mb-4" fill="none" stroke="currentColor" stroke-width="1" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"/>
+                </svg>
+                <p class="text-ink-500 font-medium">No documents yet</p>
+                <p class="text-ink-400 text-sm mt-1">Upload a PDF to get started</p>
+            </div>
+
+            <div id="documentsTable" class="hidden">
+                <table class="w-full">
+                    <thead>
+                        <tr class="text-left text-xs text-ink-500 uppercase tracking-wider border-b border-ink-100">
+                            <th class="px-6 py-3 font-medium">Document</th>
+                            <th class="px-4 py-3 font-medium">Pages</th>
+                            <th class="px-4 py-3 font-medium">Images</th>
+                            <th class="px-4 py-3 font-medium">Size</th>
+                            <th class="px-4 py-3 font-medium">Uploaded</th>
+                            <th class="px-4 py-3 font-medium text-right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="documentsBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <!-- ===== DETAIL MODAL ===== -->
+    <div id="detailModal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-start justify-center pt-12 overflow-y-auto pb-12">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-4xl mx-4 animate-fade-up">
+            <!-- Modal header -->
+            <div class="px-6 py-4 border-b border-ink-100 flex items-center justify-between sticky top-0 bg-white rounded-t-2xl z-10">
+                <div>
+                    <h2 id="modalTitle" class="font-bold text-ink-900 text-lg"></h2>
+                    <p id="modalSubtitle" class="text-sm text-ink-500"></p>
+                </div>
+                <button onclick="closeModal()" class="text-ink-400 hover:text-ink-600 transition-colors p-1">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <!-- Modal tabs -->
+            <div class="px-6 border-b border-ink-100 flex gap-6">
+                <button onclick="switchTab('metadata')" id="tabMetadata" class="py-3 text-sm tab-active transition-colors">Metadata</button>
+                <button onclick="switchTab('text')" id="tabText" class="py-3 text-sm text-ink-500 hover:text-ink-700 transition-colors">Full Text</button>
+                <button onclick="switchTab('images')" id="tabImages" class="py-3 text-sm text-ink-500 hover:text-ink-700 transition-colors">Images</button>
+                <button onclick="switchTab('edit')" id="tabEdit" class="py-3 text-sm text-ink-500 hover:text-ink-700 transition-colors">Edit</button>
+            </div>
+
+            <!-- Tab content -->
+            <div id="modalContent" class="p-6">
+                <!-- Populated by JavaScript -->
+            </div>
+
+            <!-- Modal footer -->
+            <div class="px-6 py-4 border-t border-ink-100 flex items-center justify-between bg-ink-50/50 rounded-b-2xl">
+                <button onclick="deleteDocument()" class="text-sm text-red-500 hover:text-red-600 font-medium transition-colors flex items-center gap-1">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/>
+                    </svg>
+                    Delete Document
+                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="downloadFile('original')" class="px-4 py-2 text-sm bg-vault-600 text-white rounded-lg hover:bg-vault-700 transition-colors font-medium">
+                        ↓ PDF
+                    </button>
+                    <button onclick="downloadFile('text')" class="px-4 py-2 text-sm bg-ink-100 text-ink-700 rounded-lg hover:bg-ink-200 transition-colors font-medium">
+                        ↓ Text
+                    </button>
+                    <button id="btnDownloadImages" onclick="downloadAllImages()" class="px-4 py-2 text-sm bg-ink-100 text-ink-700 rounded-lg hover:bg-ink-200 transition-colors font-medium">
+                        ↓ Images
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== TOAST CONTAINER ===== -->
+    <div id="toastContainer" class="fixed top-6 right-6 z-[60] flex flex-col gap-3"></div>
+
+
+    <!-- ===== JAVASCRIPT ===== -->
+    <script>
+    // ==========================================================================
+    // Configuration — Update this URL after running setup-localstack.sh
+    // ==========================================================================
+    const API_BASE_URL = 'http://localhost:4566/restapis/YOUR_API_ID/dev/_user_request_';
+
+    // ==========================================================================
+    // State
+    // ==========================================================================
+    let selectedFile = null;
+    let documents = [];
+    let currentDocument = null;
+    let currentTab = 'metadata';
+
+    // ==========================================================================
+    // Upload Panel
+    // ==========================================================================
+    function showUploadPanel() {
+        document.getElementById('uploadPanel').classList.remove('hidden');
+    }
+
+    function hideUploadPanel() {
+        document.getElementById('uploadPanel').classList.add('hidden');
+        clearFile();
+    }
+
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.currentTarget.classList.add('dragover');
+    }
+
+    function handleDragLeave(e) {
+        e.currentTarget.classList.remove('dragover');
+    }
+
+    function handleDrop(e) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('dragover');
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type === 'application/pdf') {
+            setFile(files[0]);
+        } else {
+            toast('Please drop a PDF file', 'error');
+        }
+    }
+
+    function handleFileSelect(e) {
+        if (e.target.files.length > 0) {
+            setFile(e.target.files[0]);
+        }
+    }
+
+    function setFile(file) {
+        if (file.type !== 'application/pdf') {
+            toast('Only PDF files are accepted', 'error');
+            return;
+        }
+        if (file.size > 25 * 1024 * 1024) {
+            toast('File exceeds 25MB limit', 'error');
+            return;
+        }
+        selectedFile = file;
+        document.getElementById('filePreview').classList.remove('hidden');
+        document.getElementById('previewName').textContent = file.name;
+        document.getElementById('previewSize').textContent = formatSize(file.size);
+        document.getElementById('uploadBtn').disabled = false;
+        document.getElementById('dropZone').classList.add('hidden');
+    }
+
+    function clearFile() {
+        selectedFile = null;
+        document.getElementById('fileInput').value = '';
+        document.getElementById('filePreview').classList.add('hidden');
+        document.getElementById('uploadBtn').disabled = true;
+        document.getElementById('dropZone').classList.remove('hidden');
+        document.getElementById('progressBar').classList.add('hidden');
+    }
+
+    // ==========================================================================
+    // Upload File
+    // ==========================================================================
+    async function uploadFile() {
+        if (!selectedFile) return;
+
+        const progressBar = document.getElementById('progressBar');
+        const progressFill = document.getElementById('progressFill');
+        const progressLabel = document.getElementById('progressLabel');
+        const progressPct = document.getElementById('progressPct');
+        const uploadBtn = document.getElementById('uploadBtn');
+
+        progressBar.classList.remove('hidden');
+        uploadBtn.disabled = true;
+
+        // Simulate progress for reading file
+        setProgress(10, 'Reading file...');
+
+        try {
+            const base64Data = await fileToBase64(selectedFile);
+            setProgress(30, 'Uploading to server...');
+
+            const response = await fetch(`${API_BASE_URL}/documents`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    fileName: selectedFile.name,
+                    fileData: base64Data
+                })
+            });
+
+            setProgress(70, 'Processing PDF...');
+
+            if (!response.ok) {
+                const err = await response.json();
+                throw new Error(err.error || 'Upload failed');
+            }
+
+            const result = await response.json();
+            setProgress(100, 'Complete!');
+
+            toast(`"${result.fileName}" uploaded — ${result.pageCount} pages, ${result.imageCount} images extracted`, 'success');
+
+            setTimeout(() => {
+                hideUploadPanel();
+                loadDocuments();
+            }, 800);
+
+        } catch (err) {
+            toast(`Upload failed: ${err.message}`, 'error');
+            progressLabel.textContent = 'Failed';
+            uploadBtn.disabled = false;
+        }
+
+        function setProgress(pct, label) {
+            progressFill.style.width = pct + '%';
+            progressLabel.textContent = label;
+            progressPct.textContent = pct + '%';
+        }
+    }
+
+    function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    }
+
+    // ==========================================================================
+    // Load & Display Documents
+    // ==========================================================================
+    async function loadDocuments(searchTerm = '') {
+        const loading = document.getElementById('documentsLoading');
+        const empty = document.getElementById('documentsEmpty');
+        const table = document.getElementById('documentsTable');
+
+        loading.classList.remove('hidden');
+        empty.classList.add('hidden');
+        table.classList.add('hidden');
+
+        try {
+            let url = `${API_BASE_URL}/documents`;
+            if (searchTerm) url += `?search=${encodeURIComponent(searchTerm)}`;
+
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Failed to load');
+
+            documents = await response.json();
+            loading.classList.add('hidden');
+
+            if (documents.length === 0) {
+                empty.classList.remove('hidden');
+                updateStats([]);
+                return;
+            }
+
+            table.classList.remove('hidden');
+            renderDocuments(documents);
+            updateStats(documents);
+
+        } catch (err) {
+            loading.classList.add('hidden');
+            empty.classList.remove('hidden');
+            console.error('Load error:', err);
+        }
+    }
+
+    function renderDocuments(docs) {
+        const tbody = document.getElementById('documentsBody');
+        tbody.innerHTML = docs.map(doc => `
+            <tr class="border-b border-ink-50 hover:bg-ink-50/50 transition-colors cursor-pointer" onclick="openDocument('${doc.documentId}')">
+                <td class="px-6 py-4">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-red-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <span class="text-red-500 text-[10px] font-mono font-bold">PDF</span>
+                        </div>
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-ink-800 truncate max-w-xs">${escHtml(doc.fileName)}</p>
+                            <p class="text-xs text-ink-400 truncate max-w-xs">${escHtml(doc.title || doc.author || doc.documentId)}</p>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-4 py-4 text-sm text-ink-600">${doc.pageCount}</td>
+                <td class="px-4 py-4 text-sm text-ink-600">${doc.imageCount}</td>
+                <td class="px-4 py-4 text-sm text-ink-600 font-mono">${formatSize(doc.fileSizeBytes)}</td>
+                <td class="px-4 py-4 text-sm text-ink-500">${formatDate(doc.uploadDate)}</td>
+                <td class="px-4 py-4 text-right">
+                    <div class="flex items-center justify-end gap-1">
+                        <button onclick="event.stopPropagation(); downloadFile('original', '${doc.documentId}')" title="Download PDF"
+                            class="p-2 text-ink-400 hover:text-vault-600 hover:bg-vault-50 rounded-lg transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+                            </svg>
+                        </button>
+                        <button onclick="event.stopPropagation(); openDocument('${doc.documentId}')" title="View details"
+                            class="p-2 text-ink-400 hover:text-vault-600 hover:bg-vault-50 rounded-lg transition-colors">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function updateStats(docs) {
+        document.getElementById('statTotal').textContent = docs.length;
+        document.getElementById('statPages').textContent = docs.reduce((s, d) => s + (d.pageCount || 0), 0);
+        document.getElementById('statImages').textContent = docs.reduce((s, d) => s + (d.imageCount || 0), 0);
+        document.getElementById('statSize').textContent = formatSize(docs.reduce((s, d) => s + (d.fileSizeBytes || 0), 0));
+    }
+
+    // ==========================================================================
+    // Search
+    // ==========================================================================
+    let searchTimeout;
+    function handleSearch(e) {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(() => {
+            loadDocuments(e.target.value.trim());
+        }, 400);
+    }
+
+    // ==========================================================================
+    // Document Detail Modal
+    // ==========================================================================
+    async function openDocument(docId) {
+        try {
+            const response = await fetch(`${API_BASE_URL}/documents/${docId}`);
+            if (!response.ok) throw new Error('Not found');
+            currentDocument = await response.json();
+
+            document.getElementById('modalTitle').textContent = currentDocument.fileName;
+            document.getElementById('modalSubtitle').textContent = `${currentDocument.pageCount} pages · ${formatSize(currentDocument.fileSizeBytes)} · ${currentDocument.imageCount} images`;
+            document.getElementById('btnDownloadImages').style.display = currentDocument.imageCount > 0 ? '' : 'none';
+
+            switchTab('metadata');
+            document.getElementById('detailModal').classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+
+        } catch (err) {
+            toast('Failed to load document details', 'error');
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('detailModal').classList.add('hidden');
+        document.body.style.overflow = '';
+        currentDocument = null;
+    }
+
+    function switchTab(tab) {
+        currentTab = tab;
+        ['metadata', 'text', 'images', 'edit'].forEach(t => {
+            const el = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+            if (t === tab) {
+                el.classList.add('tab-active');
+                el.classList.remove('text-ink-500');
+            } else {
+                el.classList.remove('tab-active');
+                el.classList.add('text-ink-500');
+            }
+        });
+
+        const content = document.getElementById('modalContent');
+
+        switch (tab) {
+            case 'metadata': renderMetadataTab(content); break;
+            case 'text': renderTextTab(content); break;
+            case 'images': renderImagesTab(content); break;
+            case 'edit': renderEditTab(content); break;
+        }
+    }
+
+    function renderMetadataTab(container) {
+        const doc = currentDocument;
+        const fields = [
+            ['Document ID', doc.documentId, true],
+            ['File Name', doc.fileName],
+            ['Title', doc.title],
+            ['Author', doc.author],
+            ['Subject', doc.subject],
+            ['Keywords', doc.keywords],
+            ['Creator', doc.creator],
+            ['Producer', doc.producer],
+            ['PDF Version', doc.pdfVersion],
+            ['Page Count', doc.pageCount],
+            ['File Size', formatSize(doc.fileSizeBytes)],
+            ['Images Found', doc.imageCount],
+            ['Encrypted', doc.isEncrypted ? 'Yes' : 'No'],
+            ['Creation Date', doc.creationDate ? formatDate(doc.creationDate) : '—'],
+            ['Modification Date', doc.modificationDate ? formatDate(doc.modificationDate) : '—'],
+            ['Upload Date', formatDate(doc.uploadDate)],
+            ['S3 Original', doc.s3OriginalKey, true],
+            ['S3 Text', doc.s3TextKey, true],
+        ];
+
+        container.innerHTML = `
+            <div class="grid grid-cols-1 gap-0.5">
+                ${fields.filter(f => f[1]).map(([label, value, mono]) => `
+                    <div class="flex items-start py-2.5 border-b border-ink-50">
+                        <span class="text-sm text-ink-500 w-40 flex-shrink-0 font-medium">${label}</span>
+                        <span class="text-sm text-ink-800 ${mono ? 'font-mono text-xs break-all' : ''}">${escHtml(String(value))}</span>
+                    </div>
+                `).join('')}
+                ${doc.customMetadata && Object.keys(doc.customMetadata).length > 0 ? `
+                    <div class="mt-4">
+                        <h4 class="text-sm font-bold text-ink-700 mb-2">Custom Metadata</h4>
+                        ${Object.entries(doc.customMetadata).map(([k, v]) => `
+                            <div class="flex items-start py-2 border-b border-ink-50">
+                                <span class="text-sm text-ink-500 w-40 flex-shrink-0 font-mono">${escHtml(k)}</span>
+                                <span class="text-sm text-ink-800">${escHtml(v)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+                ${doc.s3ImageKeys && doc.s3ImageKeys.length > 0 ? `
+                    <div class="mt-4">
+                        <h4 class="text-sm font-bold text-ink-700 mb-2">Image S3 Keys</h4>
+                        ${doc.s3ImageKeys.map((key, i) => `
+                            <div class="flex items-center py-1.5 border-b border-ink-50">
+                                <span class="text-xs text-ink-500 w-16 flex-shrink-0">img ${i}</span>
+                                <span class="text-xs text-ink-600 font-mono break-all">${escHtml(key)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }
+
+    async function renderTextTab(container) {
+        container.innerHTML = `
+            <div class="text-center py-12 text-ink-500">
+                <svg class="w-6 h-6 mx-auto animate-spin mb-3" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                </svg>
+                Loading text content...
+            </div>`;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/download/${currentDocument.documentId}?type=text`);
+            if (!response.ok) throw new Error('Failed to fetch text');
+            const text = await response.text();
+
+            // Try parsing as JSON (since our API wraps it)
+            let displayText = text;
+            try {
+                const parsed = JSON.parse(text);
+                if (typeof parsed === 'string') displayText = parsed;
+                else if (parsed.body) displayText = parsed.body;
+            } catch(e) { /* use as-is */ }
+
+            container.innerHTML = `
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-sm text-ink-500">${displayText.length.toLocaleString()} characters</span>
+                    <button onclick="copyToClipboard(document.getElementById('textContent').textContent)"
+                        class="text-sm text-vault-600 hover:text-vault-700 font-medium">Copy All</button>
+                </div>
+                <pre id="textContent" class="bg-ink-50 rounded-xl p-5 text-sm text-ink-700 font-mono whitespace-pre-wrap max-h-[60vh] overflow-y-auto leading-relaxed border border-ink-100">${escHtml(displayText)}</pre>
+            `;
+        } catch (err) {
+            container.innerHTML = `<p class="text-red-500 text-sm py-8 text-center">Failed to load text: ${escHtml(err.message)}</p>`;
+        }
+    }
+
+    async function renderImagesTab(container) {
+        const doc = currentDocument;
+
+        if (!doc.s3ImageKeys || doc.s3ImageKeys.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-16 text-ink-400">
+                    <svg class="w-12 h-12 mx-auto mb-3 text-ink-200" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5"/>
+                    </svg>
+                    <p class="font-medium">No images found in this PDF</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = `
+            <p class="text-sm text-ink-500 mb-4">${doc.imageCount} image(s) extracted from the PDF</p>
+            <div id="imageGrid" class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                ${doc.s3ImageKeys.map((_, i) => `
+                    <div class="bg-ink-50 rounded-xl border border-ink-100 overflow-hidden img-thumb">
+                        <div class="aspect-square flex items-center justify-center p-2" id="imgContainer${i}">
+                            <div class="text-ink-300 text-sm">Loading...</div>
+                        </div>
+                        <div class="px-3 py-2 border-t border-ink-100 flex items-center justify-between">
+                            <span class="text-xs text-ink-500 font-mono">Image ${i + 1}</span>
+                            <button onclick="downloadFile('image', '${doc.documentId}', ${i})"
+                                class="text-xs text-vault-600 hover:text-vault-700 font-medium">Download</button>
+                        </div>
+                    </div>
+                `).join('')}
+            </div>`;
+
+        // Load images asynchronously
+        doc.s3ImageKeys.forEach(async (_, i) => {
+            try {
+                const resp = await fetch(`${API_BASE_URL}/download/${doc.documentId}?type=image&imageIndex=${i}`);
+                if (!resp.ok) throw new Error('Failed');
+
+                const contentType = resp.headers.get('content-type');
+                let imgSrc;
+
+                if (contentType && contentType.includes('image')) {
+                    const blob = await resp.blob();
+                    imgSrc = URL.createObjectURL(blob);
+                } else {
+                    // Response is base64 encoded
+                    const data = await resp.text();
+                    let base64 = data;
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (typeof parsed === 'string') base64 = parsed;
+                        else if (parsed.body) base64 = parsed.body;
+                    } catch(e) {}
+                    imgSrc = `data:image/png;base64,${base64}`;
+                }
+
+                document.getElementById(`imgContainer${i}`).innerHTML =
+                    `<img src="${imgSrc}" alt="Extracted image ${i+1}" class="max-w-full max-h-full object-contain rounded"/>`;
+
+            } catch (err) {
+                document.getElementById(`imgContainer${i}`).innerHTML =
+                    `<span class="text-red-400 text-xs">Failed to load</span>`;
+            }
+        });
+    }
+
+    function renderEditTab(container) {
+        const doc = currentDocument;
+        container.innerHTML = `
+            <form id="editForm" onsubmit="handleUpdate(event)" class="space-y-5">
+                ${['title', 'author', 'subject', 'keywords', 'fileName'].map(field => `
+                    <div>
+                        <label class="block text-sm font-medium text-ink-700 mb-1.5 capitalize">${field === 'fileName' ? 'File Name' : field}</label>
+                        <input type="text" name="${field}" value="${escAttr(doc[field] || '')}"
+                            class="w-full px-4 py-2.5 bg-ink-50 border border-ink-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-vault-500/30 focus:border-vault-400 transition-all"/>
+                    </div>
+                `).join('')}
+                <div class="flex justify-end pt-2">
+                    <button type="submit"
+                        class="px-6 py-2.5 bg-vault-600 text-white text-sm font-medium rounded-xl hover:bg-vault-700 transition-colors shadow-md shadow-vault-600/20">
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        `;
+    }
+
+    async function handleUpdate(e) {
+        e.preventDefault();
+        const form = e.target;
+        const updates = {};
+
+        ['title', 'author', 'subject', 'keywords', 'fileName'].forEach(field => {
+            const val = form.elements[field].value;
+            if (val !== (currentDocument[field] || '')) {
+                updates[field] = val;
+            }
+        });
+
+        if (Object.keys(updates).length === 0) {
+            toast('No changes to save', 'info');
+            return;
+        }
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/documents/${currentDocument.documentId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updates)
+            });
+
+            if (!response.ok) throw new Error('Update failed');
+            const updated = await response.json();
+            currentDocument = updated;
+
+            document.getElementById('modalTitle').textContent = updated.fileName;
+            toast('Document updated', 'success');
+            loadDocuments();
+
+        } catch (err) {
+            toast(`Update failed: ${err.message}`, 'error');
+        }
+    }
+
+    // ==========================================================================
+    // Download
+    // ==========================================================================
+    async function downloadFile(type, docId, imageIndex) {
+        docId = docId || currentDocument?.documentId;
+        if (!docId) return;
+
+        try {
+            let url = `${API_BASE_URL}/download/${docId}?type=${type}`;
+            if (type === 'image' && imageIndex !== undefined) {
+                url += `&imageIndex=${imageIndex}`;
+            }
+
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Download failed');
+
+            const contentType = response.headers.get('content-type') || '';
+            let blob;
+
+            if (contentType.includes('text') || contentType.includes('json')) {
+                let text = await response.text();
+                try {
+                    const parsed = JSON.parse(text);
+                    if (typeof parsed === 'string') text = parsed;
+                    else if (parsed.body) {
+                        if (type === 'text') {
+                            text = parsed.body;
+                        } else {
+                            const binary = atob(parsed.body);
+                            const bytes = new Uint8Array(binary.length);
+                            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                            blob = new Blob([bytes], { type: type === 'image' ? 'image/png' : 'application/pdf' });
+                        }
+                    }
+                } catch(e) {}
+                if (!blob) blob = new Blob([text], { type: 'text/plain' });
+            } else {
+                blob = await response.blob();
+            }
+
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            const doc = documents.find(d => d.documentId === docId) || currentDocument;
+            const baseName = (doc?.fileName || 'document').replace(/\.pdf$/i, '');
+            if (type === 'text') a.download = baseName + '.txt';
+            else if (type === 'image') a.download = `${baseName}_image_${imageIndex || 0}.png`;
+            else a.download = doc?.fileName || 'document.pdf';
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(a.href);
+
+        } catch (err) {
+            toast(`Download failed: ${err.message}`, 'error');
+        }
+    }
+
+    async function downloadAllImages() {
+        if (!currentDocument?.s3ImageKeys) return;
+        for (let i = 0; i < currentDocument.s3ImageKeys.length; i++) {
+            await downloadFile('image', currentDocument.documentId, i);
+            await new Promise(r => setTimeout(r, 300)); // Small delay between downloads
+        }
+    }
+
+    // ==========================================================================
+    // Delete
+    // ==========================================================================
+    async function deleteDocument() {
+        if (!currentDocument) return;
+        if (!confirm(`Delete "${currentDocument.fileName}"? This cannot be undone.`)) return;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/documents/${currentDocument.documentId}`, {
+                method: 'DELETE'
+            });
+            if (!response.ok) throw new Error('Delete failed');
+
+            toast('Document deleted', 'success');
+            closeModal();
+            loadDocuments();
+
+        } catch (err) {
+            toast(`Delete failed: ${err.message}`, 'error');
+        }
+    }
+
+    // ==========================================================================
+    // Utilities
+    // ==========================================================================
+    function formatSize(bytes) {
+        if (!bytes || bytes === 0) return '0 B';
+        const units = ['B', 'KB', 'MB', 'GB'];
+        let i = 0;
+        let size = bytes;
+        while (size >= 1024 && i < units.length - 1) { size /= 1024; i++; }
+        return size.toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+    }
+
+    function formatDate(dateStr) {
+        if (!dateStr) return '—';
+        try {
+            return new Date(dateStr).toLocaleString('en-US', {
+                month: 'short', day: 'numeric', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+            });
+        } catch { return dateStr; }
+    }
+
+    function escHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+
+    function escAttr(str) {
+        return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function copyToClipboard(text) {
+        navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard', 'success'));
+    }
+
+    // ==========================================================================
+    // Toast Notifications
+    // ==========================================================================
+    function toast(message, type = 'info') {
+        const container = document.getElementById('toastContainer');
+        const colors = {
+            success: 'bg-emerald-600',
+            error: 'bg-red-600',
+            info: 'bg-vault-600'
+        };
+
+        const el = document.createElement('div');
+        el.className = `${colors[type] || colors.info} text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium toast-in max-w-sm`;
+        el.textContent = message;
+        container.appendChild(el);
+
+        setTimeout(() => {
+            el.classList.remove('toast-in');
+            el.classList.add('toast-out');
+            setTimeout(() => el.remove(), 300);
+        }, 3500);
+    }
+
+    // ==========================================================================
+    // Close modal on backdrop click or Escape
+    // ==========================================================================
+    document.getElementById('detailModal').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModal();
+    });
+
+    // ==========================================================================
+    // Initialize
+    // ==========================================================================
+    document.addEventListener('DOMContentLoaded', () => {
+        loadDocuments();
+    });
+    </script>
+</body>
+</html>

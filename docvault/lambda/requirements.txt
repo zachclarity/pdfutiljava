@@ -1,0 +1,4 @@
+boto3
+pymupdf
+Pillow
+pytesseract
