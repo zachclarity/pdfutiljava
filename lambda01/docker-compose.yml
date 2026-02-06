@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # =========================================================================
+  #  Maven build – produces the Lambda fat JAR
+  # =========================================================================
+  lambda-builder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lambda-builder
+    volumes:
+      - lambda_jar:/opt/lambda-output
+
+  # =========================================================================
+  #  LocalStack – S3, Lambda, API Gateway
+  # =========================================================================
+  localstack:
+    image: localstack/localstack:3.4
+    container_name: localstack
+    ports:
+      - "4566:4566"            # LocalStack gateway
+      - "4510-4559:4510-4559"  # service ports
+    environment:
+      - SERVICES=s3,lambda,apigateway,iam
+      - DEBUG=0
+      - LAMBDA_EXECUTOR=docker      # run lambdas in Docker containers
+      - LAMBDA_DOCKER_NETWORK=pdfbox-lambda-network
+      - DOCKER_HOST=unix:///var/run/docker.sock
+      - AWS_DEFAULT_REGION=us-east-1
+      - LAMBDA_RUNTIME_ENVIRONMENT_TIMEOUT=120
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - lambda_jar:/opt/code/localstack          # Lambda JAR from builder
+      - ./localstack/init-resources.sh:/etc/localstack/init/ready.d/init-resources.sh  # auto-init
+    depends_on:
+      lambda-builder:
+        condition: service_completed_successfully
+    networks:
+      - pdfbox-lambda-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # =========================================================================
+  #  Nginx Frontend  –  proxies /api/* → LocalStack API Gateway
+  # =========================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: pdfbox-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - pdfbox-lambda-network
+    restart: unless-stopped
+
+networks:
+  pdfbox-lambda-network:
+    driver: bridge
+
+volumes:
+  localstack_data:
+    driver: local
+  lambda_jar:
+    driver: local

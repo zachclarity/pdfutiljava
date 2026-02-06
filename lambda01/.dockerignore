@@ -1,0 +1,8 @@
+target/
+.git/
+.idea/
+*.md
+frontend/
+localstack/
+scripts/
+.gitignore
